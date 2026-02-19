@@ -35,6 +35,21 @@ services:
       - "3000:80"
     depends_on:
       - api
+    networks:
+      - default
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.veeam-audit.rule=PathPrefix(`/veeam-audit`)"
+      - "traefik.http.routers.veeam-audit.entrypoints=websecure"
+      - "traefik.http.routers.veeam-audit.tls=true"
+      - "traefik.http.routers.veeam-audit.middlewares=veeam-audit-strip"
+      - "traefik.http.middlewares.veeam-audit-strip.stripprefix.prefixes=/veeam-audit"
+      - "traefik.http.services.veeam-audit.loadbalancer.server.port=80"
+
+networks:
+  traefik-net:
+    external: true
 
 volumes:
   pgdata:
