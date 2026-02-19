@@ -25,6 +25,7 @@ def get_dashboard(
 
     total_veeam_tb = 0.0
     total_wasabi_tb = 0.0
+    total_wasabi_deleted_tb = 0.0
     discrepancy_pct = 0.0
     total_cost = 0.0
     active_issues = 0
@@ -34,12 +35,14 @@ def get_dashboard(
             db.query(
                 func.coalesce(func.sum(SiteMetric.veeam_tb), 0),
                 func.coalesce(func.sum(SiteMetric.wasabi_active_tb), 0),
+                func.coalesce(func.sum(SiteMetric.wasabi_deleted_tb), 0),
             )
             .filter(SiteMetric.report_date == latest_date_row)
             .one()
         )
         total_veeam_tb = float(agg[0])
         total_wasabi_tb = float(agg[1])
+        total_wasabi_deleted_tb = float(agg[2])
 
         if total_veeam_tb > 0:
             discrepancy_pct = round(
@@ -65,6 +68,7 @@ def get_dashboard(
     kpis = {
         "total_veeam_tb": total_veeam_tb,
         "total_wasabi_tb": total_wasabi_tb,
+        "total_wasabi_deleted_tb": total_wasabi_deleted_tb,
         "discrepancy_pct": discrepancy_pct,
         "total_cost": total_cost,
         "active_issues": active_issues,

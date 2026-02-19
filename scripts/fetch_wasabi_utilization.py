@@ -37,6 +37,7 @@ def fetch_utilization(access_key, secret_key, from_date=None, to_date=None, late
     headers = {"Authorization": f"{access_key}:{secret_key}"}
     all_records = []
     page_num = 0
+    total_pages = None
 
     while True:
         params = {"pageNum": page_num, "pageSize": 100}
@@ -56,7 +57,8 @@ def fetch_utilization(access_key, secret_key, from_date=None, to_date=None, late
         if isinstance(data, dict) and "Records" in data:
             records = data["Records"]
             all_records.extend(records)
-            total_pages = data.get("PageInfo", {}).get("PageCount", 1)
+            if total_pages is None:
+                total_pages = data.get("PageInfo", {}).get("PageCount", 1)
             if page_num + 1 >= total_pages or not records:
                 break
             page_num += 1
@@ -117,11 +119,28 @@ def write_csv(records, output_path):
     print(f"Wrote {len(records)} records to {output_path}")
 
 
+def save_records_by_date(records, output_dir):
+    """Group records by StartTime date and save per-date CSVs."""
+    by_date = {}
+    for r in records:
+        d = r.get("StartTime", "")[:10]  # YYYY-MM-DD
+        if d:
+            by_date.setdefault(d, []).append(r)
+    for d, recs in sorted(by_date.items()):
+        deduped = deduplicate_by_bucket(recs)
+        csv_recs = convert_to_csv_format(deduped)
+        path = output_dir / f"all-bucket-utilization-{d}.csv"
+        write_csv(csv_recs, path)
+    print(f"\nSaved per-date CSVs for {len(by_date)} dates")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Fetch Wasabi bucket utilization via Stats API")
     parser.add_argument("--from", dest="from_date", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--to", dest="to_date", help="End date (YYYY-MM-DD)")
     parser.add_argument("--latest", action="store_true", help="Fetch only latest data point")
+    parser.add_argument("--save-by-date", action="store_true",
+                        help="Save separate CSV per date (for date-range queries)")
     parser.add_argument("--output", "-o", help="Output directory or file path")
     args = parser.parse_args()
 
@@ -129,6 +148,13 @@ def main():
     use_latest = args.latest or (not args.from_date and not args.to_date)
 
     records = fetch_utilization(access_key, secret_key, args.from_date, args.to_date, use_latest)
+
+    if args.save_by_date:
+        output_dir = Path(args.output) if args.output else PROJECT_DIR / "input_wasabi_utilization"
+        save_records_by_date(records, output_dir)
+        print(f"\nSuccess! Per-date CSVs saved to: {output_dir}")
+        return
+
     records = deduplicate_by_bucket(records)
     csv_records = convert_to_csv_format(records)
 

@@ -15,6 +15,7 @@ interface DataPoint {
   date: string;
   veeam_tb: number;
   wasabi_active_tb: number;
+  wasabi_deleted_tb: number;
 }
 
 interface StorageTrendChartProps {
@@ -68,13 +69,13 @@ export default function StorageTrendChart({
               labelStyle={{ color: "#9ca3af" }}
               formatter={(value: number, name: string) => [
                 `${value.toFixed(2)} TB`,
-                name === "veeam_tb" ? "Veeam" : "Wasabi Active",
+                name === "veeam_tb" ? "Veeam" : name === "wasabi_active_tb" ? "Wasabi Active" : "Wasabi Deleted",
               ]}
             />
             <Legend
               wrapperStyle={{ color: "#9ca3af", fontSize: 12 }}
               formatter={(value: string) =>
-                value === "veeam_tb" ? "Veeam TB" : "Wasabi Active TB"
+                value === "veeam_tb" ? "Veeam TB" : value === "wasabi_active_tb" ? "Wasabi Active TB" : "Wasabi Deleted TB"
               }
             />
             <Line
@@ -89,6 +90,14 @@ export default function StorageTrendChart({
               type="monotone"
               dataKey="wasabi_active_tb"
               stroke="#3b82f6"
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 4 }}
+            />
+            <Line
+              type="monotone"
+              dataKey="wasabi_deleted_tb"
+              stroke="#f43f5e"
               strokeWidth={2}
               dot={false}
               activeDot={{ r: 4 }}

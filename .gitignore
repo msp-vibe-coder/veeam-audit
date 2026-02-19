@@ -6,3 +6,5 @@ frontend/dist/
 reports/
 .venv/
 *.egg-info/
+input_veeam_audits/
+input_wasabi_utilization/

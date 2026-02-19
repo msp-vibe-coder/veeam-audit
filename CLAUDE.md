@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+# Docker Deployment
+docker_deploy.md
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
@@ -81,6 +84,50 @@ Site codes are extracted from BDR server names via regex (e.g., `AJC-BDR3` → `
 
 ### Deployment
 The backend Dockerfile runs `alembic upgrade head` before starting uvicorn. The frontend Dockerfile is a multi-stage build (Node build → nginx serve). In Docker Compose, the frontend container maps port 3000→80 (nginx). The frontend nginx proxies `/api/` to the backend service.
+
+## Production Server
+
+**Host**: `10.69.69.10` (ptscorpvs0wapp01)
+**SSH user**: `wapp01admin`
+**App URL**: `https://ptswebapps/veeam-audit/`
+**App directory**: `/home/wapp01admin/apps/veeam-audit/`
+
+### Docker containers
+- `veeam-audit` — frontend (nginx, port 80 internal, behind Traefik)
+- `veeam-audit-api` — backend (FastAPI/uvicorn)
+- `veeam-audit-db` — PostgreSQL 16 (port 5432 internal, not exposed to host)
+
+### Database access
+PostgreSQL is only accessible inside the Docker network. Two ways to connect:
+
+**From the server (exec into container):**
+```bash
+ssh wapp01admin@10.69.69.10 "docker exec veeam-audit-db psql -U veeam -d veeam_audit -c 'SELECT count(*) FROM daily_summaries;'"
+```
+
+**From this dev machine (SSH tunnel):**
+```bash
+# 1. Get the DB container's internal IP
+ssh wapp01admin@10.69.69.10 "docker inspect veeam-audit-db --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'"
+# Returns something like 172.19.0.2
+
+# 2. Create SSH tunnel (replace IP if it changed)
+ssh -f -N -L 5432:172.19.0.2:5432 wapp01admin@10.69.69.10
+
+# 3. Connect locally via the tunnel
+# DB password contains a literal backslash: V33amAud1t#2026\!
+# URL-encoded for DATABASE_URL: V33amAud1t%232026%5C%21
+# Example DATABASE_URL for tunnel: postgresql://veeam:V33amAud1t%232026%5C%21@localhost:5432/veeam_audit
+```
+
+**Important**: The dev machine does NOT have Docker installed. To run pipeline scripts against the production DB, use the SSH tunnel approach and temporarily update `DATABASE_URL` in `.env`. Remember to restore it afterward.
+
+### SSH output quirk
+SSH output from the server doesn't display directly in Claude Code's bash tool. Redirect to a file and read it:
+```bash
+ssh wapp01admin@10.69.69.10 "some command" > C:/tmp_ssh.txt 2>&1
+# Then use Read tool on C:\tmp_ssh.txt
+```
 
 ## Key Conventions
 

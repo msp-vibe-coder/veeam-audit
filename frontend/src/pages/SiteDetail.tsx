@@ -25,6 +25,7 @@ export default function SiteDetail() {
       date: h.report_date,
       veeam_tb: h.veeam_tb,
       wasabi_active_tb: h.wasabi_active_tb,
+      wasabi_deleted_tb: h.wasabi_deleted_tb,
     }));
   }, [detail]);
 
