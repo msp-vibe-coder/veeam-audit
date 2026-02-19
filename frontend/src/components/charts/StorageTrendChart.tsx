@@ -38,12 +38,19 @@ export default function StorageTrendChart({
     })(),
   }));
 
-  const allValues = data.flatMap((d) => [d.veeam_tb, d.wasabi_active_tb, d.wasabi_deleted_tb]);
-  const dataMin = Math.min(...allValues);
-  const dataMax = Math.max(...allValues);
-  const padding = (dataMax - dataMin) * 0.1 || 10;
-  const yMin = Math.floor((dataMin - padding) / 10) * 10;
-  const yMax = Math.ceil((dataMax + padding) / 10) * 10;
+  const leftValues = data.flatMap((d) => [d.veeam_tb, d.wasabi_active_tb]);
+  const leftMin = Math.min(...leftValues);
+  const leftMax = Math.max(...leftValues);
+  const leftPad = (leftMax - leftMin) * 0.1 || 10;
+  const yLeftMin = Math.floor((leftMin - leftPad) / 10) * 10;
+  const yLeftMax = Math.ceil((leftMax + leftPad) / 10) * 10;
+
+  const rightValues = data.map((d) => d.wasabi_deleted_tb);
+  const rightMin = Math.min(...rightValues);
+  const rightMax = Math.max(...rightValues);
+  const rightPad = (rightMax - rightMin) * 0.1 || 10;
+  const yRightMin = Math.floor((rightMin - rightPad) / 10) * 10;
+  const yRightMax = Math.ceil((rightMax + rightPad) / 10) * 10;
 
   return (
     <Card>
@@ -52,7 +59,7 @@ export default function StorageTrendChart({
       </h3>
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={formatted} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+          <LineChart data={formatted} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
             <XAxis
               dataKey="dateLabel"
@@ -61,8 +68,18 @@ export default function StorageTrendChart({
               tickLine={{ stroke: "#4b5563" }}
             />
             <YAxis
-              domain={[yMin, yMax]}
+              yAxisId="left"
+              domain={[yLeftMin, yLeftMax]}
               tick={{ fill: "#9ca3af", fontSize: 12 }}
+              axisLine={{ stroke: "#4b5563" }}
+              tickLine={{ stroke: "#4b5563" }}
+              tickFormatter={(v: number) => `${v.toFixed(0)} TB`}
+            />
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              domain={[yRightMin, yRightMax]}
+              tick={{ fill: "#f43f5e", fontSize: 12 }}
               axisLine={{ stroke: "#4b5563" }}
               tickLine={{ stroke: "#4b5563" }}
               tickFormatter={(v: number) => `${v.toFixed(0)} TB`}
@@ -87,6 +104,7 @@ export default function StorageTrendChart({
               }
             />
             <Line
+              yAxisId="left"
               type="monotone"
               dataKey="veeam_tb"
               stroke="#10b981"
@@ -95,6 +113,7 @@ export default function StorageTrendChart({
               activeDot={{ r: 4 }}
             />
             <Line
+              yAxisId="left"
               type="monotone"
               dataKey="wasabi_active_tb"
               stroke="#3b82f6"
@@ -103,6 +122,7 @@ export default function StorageTrendChart({
               activeDot={{ r: 4 }}
             />
             <Line
+              yAxisId="right"
               type="monotone"
               dataKey="wasabi_deleted_tb"
               stroke="#f43f5e"
