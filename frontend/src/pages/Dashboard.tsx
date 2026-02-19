@@ -22,8 +22,13 @@ import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import type { DashboardData, Issue } from "@/types";
 
 export default function Dashboard() {
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const today = new Date();
+  const thirtyDaysAgo = new Date(today);
+  thirtyDaysAgo.setDate(today.getDate() - 30);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+  const [dateFrom, setDateFrom] = useState(fmt(thirtyDaysAgo));
+  const [dateTo, setDateTo] = useState(fmt(today));
 
   const { data: dashboard, loading: dashLoading, error: dashError } = useApi<DashboardData>(
     () =>
