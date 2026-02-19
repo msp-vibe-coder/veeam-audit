@@ -5,8 +5,8 @@ Backfill All Historical Dates from Wasabi S3
 Downloads all date folders from Wasabi S3 and processes each one into PostgreSQL.
 Used to populate a fresh database with all historical Veeam audit data.
 
-The Wasabi bucket utilization CSV (fetched once via fetch_wasabi_utilization.py)
-is reused for all dates, since the Stats API only provides the current snapshot.
+Also fetches per-date Wasabi bucket utilization via the Stats API (supports
+historical date ranges with --from/--to), so each date gets its own cost data.
 
 Usage:
     python scripts/backfill_all_dates.py --verbose
@@ -140,6 +140,31 @@ def main():
             print(f"  {f['name']}")
         print(f"\nTotal: {total} dates (dry run, nothing downloaded or processed)")
         return 0
+
+    # Fetch per-date Wasabi utilization data via Stats API
+    if not args.skip_download:
+        earliest_date = date_folders[0]["name"]
+        latest_date = date_folders[-1]["name"]
+        fetch_script = str(SCRIPT_DIR / "fetch_wasabi_utilization.py")
+        print(f"\nFetching Wasabi utilization data from {earliest_date} to {latest_date}...")
+        wasabi_result = subprocess.run(
+            [sys.executable, fetch_script, "--from", earliest_date, "--to", latest_date, "--save-by-date"],
+            cwd=str(PROJECT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if wasabi_result.returncode != 0:
+            print("WARNING: Failed to fetch Wasabi utilization data")
+            if wasabi_result.stderr:
+                for line in wasabi_result.stderr.strip().split("\n")[-5:]:
+                    print(f"  {line}")
+            print("  Continuing with whatever Wasabi data is available locally...\n")
+        else:
+            if args.verbose and wasabi_result.stdout:
+                for line in wasabi_result.stdout.strip().split("\n"):
+                    print(f"  {line}")
+            print("  Wasabi utilization data fetched successfully.\n")
 
     # Process each date
     print()
