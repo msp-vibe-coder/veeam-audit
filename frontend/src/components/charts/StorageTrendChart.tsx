@@ -38,6 +38,13 @@ export default function StorageTrendChart({
     })(),
   }));
 
+  const allValues = data.flatMap((d) => [d.veeam_tb, d.wasabi_active_tb, d.wasabi_deleted_tb]);
+  const dataMin = Math.min(...allValues);
+  const dataMax = Math.max(...allValues);
+  const padding = (dataMax - dataMin) * 0.1 || 10;
+  const yMin = Math.floor((dataMin - padding) / 10) * 10;
+  const yMax = Math.ceil((dataMax + padding) / 10) * 10;
+
   return (
     <Card>
       <h3 className="mb-4 text-sm font-medium text-gray-500 dark:text-gray-400">
@@ -54,10 +61,11 @@ export default function StorageTrendChart({
               tickLine={{ stroke: "#4b5563" }}
             />
             <YAxis
+              domain={[yMin, yMax]}
               tick={{ fill: "#9ca3af", fontSize: 12 }}
               axisLine={{ stroke: "#4b5563" }}
               tickLine={{ stroke: "#4b5563" }}
-              tickFormatter={(v: number) => `${v.toFixed(1)} TB`}
+              tickFormatter={(v: number) => `${v.toFixed(0)} TB`}
             />
             <Tooltip
               contentStyle={{
