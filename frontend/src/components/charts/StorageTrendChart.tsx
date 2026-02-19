@@ -42,14 +42,14 @@ export default function StorageTrendChart({
   const leftMin = Math.min(...leftValues);
   const leftMax = Math.max(...leftValues);
   const leftPad = (leftMax - leftMin) * 0.1 || 10;
-  const yLeftMin = Math.floor((leftMin - leftPad) / 10) * 10;
+  const yLeftMin = Math.max(0, Math.floor((leftMin - leftPad) / 10) * 10);
   const yLeftMax = Math.ceil((leftMax + leftPad) / 10) * 10;
 
   const rightValues = data.map((d) => d.wasabi_deleted_tb);
   const rightMin = Math.min(...rightValues);
   const rightMax = Math.max(...rightValues);
   const rightPad = (rightMax - rightMin) * 0.1 || 10;
-  const yRightMin = Math.floor((rightMin - rightPad) / 10) * 10;
+  const yRightMin = Math.max(0, Math.floor((rightMin - rightPad) / 10) * 10);
   const yRightMax = Math.ceil((rightMax + rightPad) / 10) * 10;
 
   return (
