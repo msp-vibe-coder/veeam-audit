@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import DailySummary, SiteMetric, Anomaly, PipelineRun
+from app.routers.settings import _read_settings
 from app.schemas.schemas import DashboardResponse, DailySummaryOut
 
 router = APIRouter()
@@ -49,21 +50,20 @@ def get_dashboard(
                 abs(total_veeam_tb - total_wasabi_tb) / total_veeam_tb * 100, 2
             )
 
-        # Total cost from latest daily summary
-        latest_summary = (
-            db.query(DailySummary)
-            .filter(DailySummary.report_date == latest_date_row)
-            .first()
-        )
-        if latest_summary:
-            total_cost = float(latest_summary.total_cost or 0)
-
         # Active issues = anomalies for the latest date
         active_issues = (
             db.query(func.count(Anomaly.id))
             .filter(Anomaly.report_date == latest_date_row)
             .scalar()
         ) or 0
+
+    # Derive costs from TB values using settings so KPIs and chart are consistent
+    settings = _read_settings(db)
+    cost_per_tb = settings["wasabi_cost_per_tb"]
+    tax_mult = 1 + settings["sales_tax_rate"]
+    total_cost = round(
+        (total_wasabi_tb + total_wasabi_deleted_tb) * cost_per_tb * tax_mult, 2
+    )
 
     kpis = {
         "total_veeam_tb": total_veeam_tb,
@@ -95,8 +95,19 @@ def get_dashboard(
             "status": pipeline_run.status,
         }
 
+    # Recompute active_cost/deleted_cost from TB values so the cost chart
+    # tracks the storage chart (the pre-computed DB values came from a
+    # different data source and don't match).
+    summaries_out = []
+    for s in daily_summaries:
+        out = DailySummaryOut.model_validate(s)
+        out.active_cost = round(float(s.wasabi_active_tb or 0) * cost_per_tb * tax_mult, 2)
+        out.deleted_cost = round(float(s.wasabi_deleted_tb or 0) * cost_per_tb * tax_mult, 2)
+        out.total_cost = round(out.active_cost + out.deleted_cost, 2)
+        summaries_out.append(out)
+
     return DashboardResponse(
         kpis=kpis,
-        daily_summaries=[DailySummaryOut.model_validate(s) for s in daily_summaries],
+        daily_summaries=summaries_out,
         latest_pipeline_run=latest_pipeline_run,
     )
