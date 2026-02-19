@@ -12,6 +12,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
 import requests
 from dotenv import load_dotenv
 
@@ -24,10 +25,11 @@ BYTES_TO_TB = 1024**4
 
 
 def load_credentials():
-    access_key = os.getenv("WASABI_ACCESS_KEY_ID")
-    secret_key = os.getenv("WASABI_SECRET_ACCESS_KEY")
+    # Prefer dedicated stats API credentials, fall back to S3 credentials
+    access_key = os.getenv("WASABI_STATS_ACCESS_KEY") or os.getenv("WASABI_ACCESS_KEY_ID")
+    secret_key = os.getenv("WASABI_STATS_SECRET_KEY") or os.getenv("WASABI_SECRET_ACCESS_KEY")
     if not access_key or not secret_key:
-        print("Error: WASABI_ACCESS_KEY_ID and WASABI_SECRET_ACCESS_KEY must be set in .env")
+        print("Error: WASABI_ACCESS_KEY_ID and WASABI_SECRET_ACCESS_KEY (or WASABI_STATS_ACCESS_KEY/SECRET_KEY) must be set in .env")
         sys.exit(1)
     return access_key, secret_key
 
@@ -166,6 +168,20 @@ def main():
         output_path = PROJECT_DIR / "input_wasabi_utilization" / f"all-bucket-utilization-{datetime.now().strftime('%Y-%m-%d')}.csv"
 
     write_csv(csv_records, output_path)
+
+    # Validate data freshness — detect stale API responses
+    df = pd.read_csv(output_path)
+    if "RecordDate" in df.columns and len(df) > 0:
+        record_dates = pd.to_datetime(df["RecordDate"], errors="coerce")
+        max_record = record_dates.max()
+        if pd.notna(max_record):
+            file_date = datetime.now().date()
+            days_stale = (file_date - max_record.date()).days
+            if days_stale > 7:
+                print(f"\nWARNING: Wasabi data is stale! Most recent RecordDate={max_record.date()}, expected ~{file_date}")
+                print(f"  Data is {days_stale} days old. API may be returning cached results.")
+                sys.exit(1)
+
     print(f"\nSuccess! {len(csv_records)} buckets saved to: {output_path}")
 
 

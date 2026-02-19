@@ -91,6 +91,49 @@ def extract_site_code_from_bdr(bdr_server: str) -> str:
     return bdr_server[:3].upper()
 
 
+def extract_site_code_from_job_name(job_name: str) -> str:
+    """Extract site code from Job Name field.
+
+    Handles formats:
+      "AJC - APP1 - Silver"              → AJC  (standard: SITE - desc - tier)
+      "JBE__DC1__Gold"                    → JBE  (double underscore separator)
+      "SKI-SERVER1_SERVER2... - Gold"     → SKI  (dash-no-space prefix)
+      "HPC NSLC - HPCCORPDT0135"         → HPC  (space-separated multi-word prefix)
+      "HPC BDR2 - DC4_F3... - Gold"      → HPC
+      "PTI - 21MW_RD1... - Gold"         → PTI
+    """
+    name = str(job_name).strip()
+
+    # Try split on " - " first (most common format)
+    if " - " in name:
+        first_part = name.split(" - ")[0].strip()
+        # If first part has spaces (e.g., "HPC NSLC", "HPC BDR2"), take first word
+        if " " in first_part:
+            return first_part.split()[0].upper()
+        # If first part contains a dash (e.g., "SKI-SERVER1_SERVER2..."), extract prefix
+        dash_match = re.match(r"^([A-Z]{2,4})-", first_part)
+        if dash_match:
+            return dash_match.group(1)
+        return first_part.upper()
+
+    # Try double underscore separator (e.g., "JBE__DC1__Gold")
+    if "__" in name:
+        return name.split("__")[0].strip().upper()
+
+    # Try regex for uppercase prefix before a dash-no-space (e.g., "SKI-SERVER1...")
+    match = re.match(r"^([A-Z]{2,4})-", name)
+    if match:
+        return match.group(1)
+
+    # Try regex for uppercase prefix at start
+    match = re.match(r"^([A-Z]{2,4})\b", name)
+    if match:
+        return match.group(1)
+
+    # Fallback: first 3 chars uppercased
+    return name[:3].upper()
+
+
 def extract_site_code_from_bucket(bucket_name: str) -> str:
     parts = bucket_name.split("-")
     return parts[0].upper() if parts else bucket_name.upper()
@@ -125,7 +168,10 @@ def get_wasabi_file(report_date: date = None) -> Path:
     if not wasabi_files:
         raise FileNotFoundError(f"No Wasabi utilization files found in: {WASABI_REPORTS_DIR}")
     wasabi_files.sort(key=lambda x: x.name, reverse=True)
-    return wasabi_files[0]
+    wasabi_file = wasabi_files[0]
+    if report_date:
+        print(f"  WARN: No exact Wasabi file for {report_date}, using {wasabi_file.name}")
+    return wasabi_file
 
 
 def load_veeam_data(data_dir: Path) -> pd.DataFrame:
@@ -140,6 +186,7 @@ def load_veeam_data(data_dir: Path) -> pd.DataFrame:
             bdr_server = extract_bdr_server_from_filename(filepath.name)
             df["BDR Server"] = bdr_server
             df["Site Code"] = extract_site_code_from_bdr(bdr_server)
+            df["Job Site Code"] = df["Job Name"].apply(extract_site_code_from_job_name)
             all_data.append(df)
         except Exception as e:
             print(f"  WARN: Error loading {filepath.name}: {e}")
@@ -211,12 +258,7 @@ def compute_metrics(veeam_df: pd.DataFrame, wasabi_df: pd.DataFrame, report_date
         row["Site Code"]: row for _, row in wasabi_site_agg.iterrows()
     }
 
-    # Veeam storage per site
-    veeam_site_agg = veeam_df.groupby("Site Code").agg({
-        "Total Backup Size GB": "first",
-    })
-
-    # But we need to sum across BDRs for total per site
+    # Sum Veeam storage across BDRs for total per site
     site_veeam_tb = {}
     for bdr in bdr_metrics:
         sc = bdr["site_code"]
@@ -230,15 +272,20 @@ def compute_metrics(veeam_df: pd.DataFrame, wasabi_df: pd.DataFrame, report_date
             failed = int((rates < 50).sum())
             warning = int(((rates >= 50) & (rates < 80)).sum())
             success = int((rates >= 80).sum())
+            success_rate = round(success / total * 100, 2) if total > 0 else 0
         elif "Last Result" in group.columns:
             failed = int((group["Last Result"] == "Failed").sum())
             warning = int((group["Last Result"] == "Warning").sum())
             success = int((group["Last Result"] == "Success").sum())
+            # Exclude None/NaN results from success rate denominator
+            # (pandas reads CSV "None" as NaN)
+            none_count = int(group["Last Result"].isna().sum()) + int((group["Last Result"] == "None").sum())
+            countable = total - none_count
+            success_rate = round(success / countable * 100, 2) if countable > 0 else 100
         else:
             failed = warning = 0
             success = total
-
-        success_rate = round(success / total * 100, 2) if total > 0 else 0
+            success_rate = round(success / total * 100, 2) if total > 0 else 0
 
         # Backup modes
         increment = 0
@@ -248,15 +295,25 @@ def compute_metrics(veeam_df: pd.DataFrame, wasabi_df: pd.DataFrame, report_date
             increment = int(modes.str.contains("increment").sum())
             reverse = int(modes.str.contains("reverse").sum())
 
-        # Tiers (Gold/Silver/Bronze based on schedule or naming)
+        # Tiers (Gold/Silver/Bronze parsed from job name)
         gold = silver = bronze = 0
-        if "Schedule" in group.columns:
-            schedules = group["Schedule"].str.lower().fillna("")
-            gold = int(schedules.str.contains("gold|daily|every day", regex=True).sum())
-            silver = int(schedules.str.contains("silver|weekly", regex=True).sum())
-            bronze = int(schedules.str.contains("bronze|monthly", regex=True).sum())
-        if gold + silver + bronze == 0:
-            gold = total  # Default all to gold if no schedule info
+        for jn in group["Job Name"].fillna(""):
+            jn = str(jn).strip()
+            tier = ""
+            # Try " - " split: take last segment
+            if " - " in jn:
+                tier = jn.rsplit(" - ", 1)[-1].strip().lower()
+            # Try "__" split: take last segment
+            elif "__" in jn:
+                tier = jn.rsplit("__", 1)[-1].strip().lower()
+
+            if tier in ("silver",):
+                silver += 1
+            elif tier in ("bronze",):
+                bronze += 1
+            else:
+                # Gold, Platinum, Wasabi, Workstation, or unrecognized → gold
+                gold += 1
 
         return {
             "total_jobs": total,
@@ -272,11 +329,11 @@ def compute_metrics(veeam_df: pd.DataFrame, wasabi_df: pd.DataFrame, report_date
         }
 
     job_stats_by_site = {}
-    for site_code, group in veeam_df.groupby("Site Code"):
+    for site_code, group in veeam_df.groupby("Job Site Code"):
         job_stats_by_site[site_code] = calc_job_stats(group)
 
     site_metrics = []
-    all_sites = set(site_veeam_tb.keys()) | set(wasabi_by_site.keys())
+    all_sites = set(site_veeam_tb.keys()) | set(wasabi_by_site.keys()) | set(job_stats_by_site.keys())
     for sc in sorted(all_sites):
         veeam_tb = site_veeam_tb.get(sc, 0)
         wasabi_row = wasabi_by_site.get(sc, {})
@@ -306,9 +363,10 @@ def compute_metrics(veeam_df: pd.DataFrame, wasabi_df: pd.DataFrame, report_date
     total_wasabi_active = sum(sm["wasabi_active_tb"] for sm in site_metrics)
     total_wasabi_deleted = sum(sm["wasabi_deleted_tb"] for sm in site_metrics)
     disc_pct = round((total_veeam - total_wasabi_active) / total_veeam * 100, 2) if total_veeam > 0 else 0
-    total_cost = sum(bm["total_cost"] for bm in bucket_metrics)
-    total_active_cost = sum(bm["active_cost"] for bm in bucket_metrics)
-    total_deleted_cost = sum(bm["deleted_cost"] for bm in bucket_metrics)
+    # Apply tax per-bucket before summing, then derive total from active+deleted
+    total_active_cost = sum(round(bm["active_cost"] * (1 + SALES_TAX_RATE), 2) for bm in bucket_metrics)
+    total_deleted_cost = sum(round(bm["deleted_cost"] * (1 + SALES_TAX_RATE), 2) for bm in bucket_metrics)
+    total_cost = round(total_active_cost + total_deleted_cost, 2)
 
     low_disk = sum(1 for b in bdr_metrics if b["disk_free_pct"] < LOW_DISK_THRESHOLD_PCT)
     high_disc = sum(1 for s in site_metrics if abs(s["discrepancy_pct"]) > DISCREPANCY_THRESHOLD_PCT)
@@ -326,8 +384,8 @@ def compute_metrics(veeam_df: pd.DataFrame, wasabi_df: pd.DataFrame, report_date
         "wasabi_deleted_tb": round(total_wasabi_deleted, 4),
         "discrepancy_pct": disc_pct,
         "total_cost": round(total_cost, 2),
-        "active_cost": round(total_active_cost * (1 + SALES_TAX_RATE), 2),
-        "deleted_cost": round(total_deleted_cost * (1 + SALES_TAX_RATE), 2),
+        "active_cost": round(total_active_cost, 2),
+        "deleted_cost": round(total_deleted_cost, 2),
         "low_disk_count": low_disk,
         "high_discrepancy_count": high_disc,
         "high_deleted_count": high_deleted,
