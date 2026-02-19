@@ -139,4 +139,9 @@ export async function fetchPipelineStatus(): Promise<PipelineStatus> {
   return data;
 }
 
+export async function triggerPipeline(): Promise<{ status: string; id: number }> {
+  const { data } = await api.post<{ status: string; id: number }>("/pipeline/run");
+  return data;
+}
+
 export default api;

@@ -16,15 +16,48 @@ services:
       retries: 5
 
   api:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     environment:
       DATABASE_URL: postgresql://veeam:${DB_PASSWORD:-changeme}@db:5432/veeam_audit
       REPORTS_DIR: /app/reports
+      WASABI_ACCESS_KEY_ID: ${WASABI_ACCESS_KEY_ID}
+      WASABI_SECRET_ACCESS_KEY: ${WASABI_SECRET_ACCESS_KEY}
+      WASABI_ENDPOINT_URL: ${WASABI_ENDPOINT_URL}
+      WASABI_AUDIT_BUCKET: ${WASABI_AUDIT_BUCKET}
+      WASABI_AUDIT_PREFIX: ${WASABI_AUDIT_PREFIX}
+      WASABI_STATS_ACCESS_KEY: ${WASABI_STATS_ACCESS_KEY}
+      WASABI_STATS_SECRET_KEY: ${WASABI_STATS_SECRET_KEY}
     volumes:
       - ./backend/app:/app/app
       - ./reports:/app/reports
+      - pipeline-veeam:/app/input_veeam_audits
+      - pipeline-wasabi:/app/input_wasabi_utilization
     ports:
       - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  pipeline:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    entrypoint: ["/bin/sh", "/app/scripts/cron-entrypoint.sh"]
+    environment:
+      DATABASE_URL: postgresql://veeam:${DB_PASSWORD:-changeme}@db:5432/veeam_audit
+      WASABI_ACCESS_KEY_ID: ${WASABI_ACCESS_KEY_ID}
+      WASABI_SECRET_ACCESS_KEY: ${WASABI_SECRET_ACCESS_KEY}
+      WASABI_ENDPOINT_URL: ${WASABI_ENDPOINT_URL}
+      WASABI_AUDIT_BUCKET: ${WASABI_AUDIT_BUCKET}
+      WASABI_AUDIT_PREFIX: ${WASABI_AUDIT_PREFIX}
+      WASABI_STATS_ACCESS_KEY: ${WASABI_STATS_ACCESS_KEY}
+      WASABI_STATS_SECRET_KEY: ${WASABI_STATS_SECRET_KEY}
+      TZ: America/Denver
+    volumes:
+      - pipeline-veeam:/app/input_veeam_audits
+      - pipeline-wasabi:/app/input_wasabi_utilization
     depends_on:
       db:
         condition: service_healthy
@@ -53,3 +86,5 @@ networks:
 
 volumes:
   pgdata:
+  pipeline-veeam:
+  pipeline-wasabi:

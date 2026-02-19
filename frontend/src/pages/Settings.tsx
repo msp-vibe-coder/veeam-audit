@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
-import { Save, CheckCircle2, AlertCircle } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Save, CheckCircle2, AlertCircle, Play, RefreshCw } from "lucide-react";
 import { useApi } from "@/hooks/useApi";
-import { fetchSettings, updateSettings } from "@/lib/api";
+import { fetchSettings, updateSettings, fetchPipelineStatus, triggerPipeline } from "@/lib/api";
 import Card from "@/components/ui/Card";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
-import type { Settings as SettingsType } from "@/types";
+import type { Settings as SettingsType, PipelineStatus } from "@/types";
 
 export default function Settings() {
   const { data: settings, loading, error: loadError } = useApi<SettingsType>(
@@ -192,7 +192,148 @@ export default function Settings() {
           </button>
         </div>
       </Card>
+
+      {/* Pipeline Management */}
+      <PipelineCard />
     </div>
+  );
+}
+
+function PipelineCard() {
+  const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);
+  const [triggering, setTriggering] = useState(false);
+  const [triggerError, setTriggerError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const status = await fetchPipelineStatus();
+      setPipelineStatus(status);
+      return status;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    loadStatus();
+  }, [loadStatus]);
+
+  // Poll while running
+  useEffect(() => {
+    if (pipelineStatus?.status === "running") {
+      pollRef.current = setInterval(loadStatus, 5000);
+    } else if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [pipelineStatus?.status, loadStatus]);
+
+  const handleTrigger = async () => {
+    setTriggering(true);
+    setTriggerError(null);
+    try {
+      await triggerPipeline();
+      // Refresh status to show "running"
+      await loadStatus();
+    } catch (err: unknown) {
+      if (err instanceof Error && "response" in err) {
+        const axiosErr = err as { response?: { status: number; data?: { detail?: string } } };
+        if (axiosErr.response?.status === 409) {
+          setTriggerError("Pipeline is already running");
+        } else {
+          setTriggerError(axiosErr.response?.data?.detail || "Failed to start pipeline");
+        }
+      } else {
+        setTriggerError("Failed to start pipeline");
+      }
+    } finally {
+      setTriggering(false);
+    }
+  };
+
+  const isRunning = pipelineStatus?.status === "running";
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "—";
+    return new Date(dateStr).toLocaleString();
+  };
+
+  const statusColor = (status: string) => {
+    switch (status) {
+      case "completed": return "text-emerald-400";
+      case "running": return "text-blue-400";
+      case "failed": return "text-red-400";
+      default: return "text-gray-400";
+    }
+  };
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Data Pipeline</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Runs daily at 7:00 AM MT. Trigger a manual run below.
+          </p>
+        </div>
+        <button
+          onClick={handleTrigger}
+          disabled={triggering || isRunning}
+          className="btn-primary"
+        >
+          {isRunning ? (
+            <span className="flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              Running...
+            </span>
+          ) : (
+            <>
+              <Play className="h-4 w-4" />
+              Run Pipeline Now
+            </>
+          )}
+        </button>
+      </div>
+
+      {triggerError && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-500/30
+                        bg-red-500/10 px-4 py-3">
+          <AlertCircle className="h-4 w-4 text-red-500" />
+          <p className="text-sm font-medium text-red-500">{triggerError}</p>
+        </div>
+      )}
+
+      {pipelineStatus && pipelineStatus.status !== "no_runs" && (
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Last Run</h3>
+          <dl className="grid grid-cols-3 gap-4 text-sm">
+            <div>
+              <dt className="text-gray-500 dark:text-gray-400">Status</dt>
+              <dd className={`font-medium capitalize ${statusColor(pipelineStatus.status)}`}>
+                {pipelineStatus.status}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-gray-500 dark:text-gray-400">Started</dt>
+              <dd className="text-gray-900 dark:text-white">
+                {formatDate(pipelineStatus.started_at)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-gray-500 dark:text-gray-400">Completed</dt>
+              <dd className="text-gray-900 dark:text-white">
+                {formatDate(pipelineStatus.completed_at)}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      )}
+    </Card>
   );
 }
 
