@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.12-slim AS base
 
 WORKDIR /app
 
@@ -14,4 +14,12 @@ COPY scripts/ /app/scripts/
 
 ENV PYTHONPATH=/app
 
+# --- API target ---
+FROM base AS api
 CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+
+# --- Pipeline cron target ---
+FROM base AS pipeline
+RUN apt-get update && apt-get install -y --no-install-recommends cron && \
+    rm -rf /var/lib/apt/lists/*
+CMD ["/bin/sh", "/app/scripts/cron-entrypoint.sh"]

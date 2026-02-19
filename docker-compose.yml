@@ -19,6 +19,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      target: api
     environment:
       DATABASE_URL: postgresql://veeam:${DB_PASSWORD:-changeme}@db:5432/veeam_audit
       REPORTS_DIR: /app/reports
@@ -44,7 +45,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    entrypoint: ["/bin/sh", "/app/scripts/cron-entrypoint.sh"]
+      target: pipeline
     environment:
       DATABASE_URL: postgresql://veeam:${DB_PASSWORD:-changeme}@db:5432/veeam_audit
       WASABI_ACCESS_KEY_ID: ${WASABI_ACCESS_KEY_ID}
