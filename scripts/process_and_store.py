@@ -115,7 +115,12 @@ def get_most_recent_data_folder(target_date: str = None) -> Path:
     return date_folders[0]
 
 
-def get_most_recent_wasabi_file() -> Path:
+def get_wasabi_file(report_date: date = None) -> Path:
+    if report_date:
+        exact = WASABI_REPORTS_DIR / f"all-bucket-utilization-{report_date}.csv"
+        if exact.exists():
+            return exact
+    # Fallback to most recent file
     wasabi_files = list(WASABI_REPORTS_DIR.glob("*bucket-utilization*.csv"))
     if not wasabi_files:
         raise FileNotFoundError(f"No Wasabi utilization files found in: {WASABI_REPORTS_DIR}")
@@ -302,6 +307,8 @@ def compute_metrics(veeam_df: pd.DataFrame, wasabi_df: pd.DataFrame, report_date
     total_wasabi_deleted = sum(sm["wasabi_deleted_tb"] for sm in site_metrics)
     disc_pct = round((total_veeam - total_wasabi_active) / total_veeam * 100, 2) if total_veeam > 0 else 0
     total_cost = sum(bm["total_cost"] for bm in bucket_metrics)
+    total_active_cost = sum(bm["active_cost"] for bm in bucket_metrics)
+    total_deleted_cost = sum(bm["deleted_cost"] for bm in bucket_metrics)
 
     low_disk = sum(1 for b in bdr_metrics if b["disk_free_pct"] < LOW_DISK_THRESHOLD_PCT)
     high_disc = sum(1 for s in site_metrics if abs(s["discrepancy_pct"]) > DISCREPANCY_THRESHOLD_PCT)
@@ -319,6 +326,8 @@ def compute_metrics(veeam_df: pd.DataFrame, wasabi_df: pd.DataFrame, report_date
         "wasabi_deleted_tb": round(total_wasabi_deleted, 4),
         "discrepancy_pct": disc_pct,
         "total_cost": round(total_cost, 2),
+        "active_cost": round(total_active_cost * (1 + SALES_TAX_RATE), 2),
+        "deleted_cost": round(total_deleted_cost * (1 + SALES_TAX_RATE), 2),
         "low_disk_count": low_disk,
         "high_discrepancy_count": high_disc,
         "high_deleted_count": high_deleted,
@@ -383,13 +392,15 @@ def write_to_postgres(conn, daily_summary, site_metrics, bdr_metrics, bucket_met
     cur.execute(
         """INSERT INTO daily_summaries
         (report_date, veeam_tb, wasabi_active_tb, wasabi_deleted_tb, discrepancy_pct,
-         total_cost, low_disk_count, high_discrepancy_count, high_deleted_count,
+         total_cost, active_cost, deleted_cost,
+         low_disk_count, high_discrepancy_count, high_deleted_count,
          failed_job_count, warning_job_count, total_jobs, successful_jobs, failed_jobs, warning_jobs)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         ON CONFLICT (report_date) DO UPDATE SET
          veeam_tb=EXCLUDED.veeam_tb, wasabi_active_tb=EXCLUDED.wasabi_active_tb,
          wasabi_deleted_tb=EXCLUDED.wasabi_deleted_tb, discrepancy_pct=EXCLUDED.discrepancy_pct,
-         total_cost=EXCLUDED.total_cost, low_disk_count=EXCLUDED.low_disk_count,
+         total_cost=EXCLUDED.total_cost, active_cost=EXCLUDED.active_cost,
+         deleted_cost=EXCLUDED.deleted_cost, low_disk_count=EXCLUDED.low_disk_count,
          high_discrepancy_count=EXCLUDED.high_discrepancy_count,
          high_deleted_count=EXCLUDED.high_deleted_count,
          failed_job_count=EXCLUDED.failed_job_count, warning_job_count=EXCLUDED.warning_job_count,
@@ -397,7 +408,8 @@ def write_to_postgres(conn, daily_summary, site_metrics, bdr_metrics, bucket_met
          failed_jobs=EXCLUDED.failed_jobs, warning_jobs=EXCLUDED.warning_jobs""",
         (rd, daily_summary["veeam_tb"], daily_summary["wasabi_active_tb"],
          daily_summary["wasabi_deleted_tb"], daily_summary["discrepancy_pct"],
-         daily_summary["total_cost"], daily_summary["low_disk_count"],
+         daily_summary["total_cost"], daily_summary["active_cost"],
+         daily_summary["deleted_cost"], daily_summary["low_disk_count"],
          daily_summary["high_discrepancy_count"], daily_summary["high_deleted_count"],
          daily_summary["failed_job_count"], daily_summary["warning_job_count"],
          daily_summary["total_jobs"], daily_summary["successful_jobs"],
@@ -491,7 +503,7 @@ def main():
     print(f"  Report date: {report_date}")
 
     try:
-        wasabi_file = get_most_recent_wasabi_file()
+        wasabi_file = get_wasabi_file(report_date)
         print(f"  Wasabi file: {wasabi_file}")
     except FileNotFoundError as e:
         print(f"Error: {e}")

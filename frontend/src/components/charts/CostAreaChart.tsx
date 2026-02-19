@@ -6,13 +6,15 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
 } from "recharts";
 import { format, parseISO } from "date-fns";
 import Card from "@/components/ui/Card";
 
 interface DataPoint {
   date: string;
-  total_cost: number;
+  active_cost: number;
+  deleted_cost: number;
 }
 
 interface CostAreaChartProps {
@@ -44,9 +46,13 @@ export default function CostAreaChart({
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={formatted} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
             <defs>
-              <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="activeGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
                 <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="deletedGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
@@ -70,17 +76,36 @@ export default function CostAreaChart({
                 color: "#f3f4f6",
               }}
               labelStyle={{ color: "#9ca3af" }}
-              formatter={(value: number) => [
-                `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-                "Total Cost",
-              ]}
+              formatter={(value: number, name: string) => {
+                const label = name === "active_cost" ? "Active Storage" : "Deleted Storage";
+                return [
+                  `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                  label,
+                ];
+              }}
+              itemSorter={() => -1}
+            />
+            <Legend
+              formatter={(value: string) =>
+                value === "active_cost" ? "Active Storage Cost" : "Deleted Storage Cost"
+              }
+              wrapperStyle={{ color: "#9ca3af", fontSize: 12 }}
             />
             <Area
               type="monotone"
-              dataKey="total_cost"
+              dataKey="active_cost"
+              stackId="cost"
               stroke="#10b981"
               strokeWidth={2}
-              fill="url(#costGradient)"
+              fill="url(#activeGradient)"
+            />
+            <Area
+              type="monotone"
+              dataKey="deleted_cost"
+              stackId="cost"
+              stroke="#f59e0b"
+              strokeWidth={2}
+              fill="url(#deletedGradient)"
             />
           </AreaChart>
         </ResponsiveContainer>

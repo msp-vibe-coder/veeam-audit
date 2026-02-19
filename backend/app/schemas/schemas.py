@@ -17,6 +17,8 @@ class DailySummaryOut(BaseModel):
     wasabi_deleted_tb: float
     discrepancy_pct: float
     total_cost: float
+    active_cost: float = 0
+    deleted_cost: float = 0
     low_disk_count: int
     high_discrepancy_count: int
     high_deleted_count: int

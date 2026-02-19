@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import {
   HardDrive,
   Cloud,
+  Trash2,
   Percent,
   DollarSign,
   AlertTriangle,
@@ -40,6 +41,7 @@ export default function Dashboard() {
       date: s.report_date,
       veeam_tb: s.veeam_tb,
       wasabi_active_tb: s.wasabi_active_tb,
+      wasabi_deleted_tb: s.wasabi_deleted_tb,
     }));
   }, [dashboard]);
 
@@ -47,7 +49,8 @@ export default function Dashboard() {
     if (!dashboard?.daily_summaries) return [];
     return dashboard.daily_summaries.map((s) => ({
       date: s.report_date,
-      total_cost: s.total_cost,
+      active_cost: s.active_cost,
+      deleted_cost: s.deleted_cost,
     }));
   }, [dashboard]);
 
@@ -128,7 +131,7 @@ export default function Dashboard() {
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <KpiCard
           title="Total Veeam"
           value={`${(kpis?.total_veeam_tb ?? 0).toFixed(2)} TB`}
@@ -140,6 +143,12 @@ export default function Dashboard() {
           value={`${(kpis?.total_wasabi_tb ?? 0).toFixed(2)} TB`}
           icon={<Cloud className="h-5 w-5" />}
           color="blue"
+        />
+        <KpiCard
+          title="Wasabi Deleted"
+          value={`${(kpis?.total_wasabi_deleted_tb ?? 0).toFixed(2)} TB`}
+          icon={<Trash2 className="h-5 w-5" />}
+          color="red"
         />
         <KpiCard
           title="Discrepancy"

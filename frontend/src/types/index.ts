@@ -8,6 +8,8 @@ export interface DailySummary {
   wasabi_deleted_tb: number;
   discrepancy_pct: number;
   total_cost: number;
+  active_cost: number;
+  deleted_cost: number;
   low_disk_count: number;
   high_discrepancy_count: number;
   high_deleted_count: number;
@@ -89,6 +91,7 @@ export interface Anomaly {
 export interface DashboardKpis {
   total_veeam_tb: number;
   total_wasabi_tb: number;
+  total_wasabi_deleted_tb: number;
   discrepancy_pct: number;
   total_cost: number;
   active_issues: number;

@@ -12,6 +12,8 @@ class DailySummary(Base):
     wasabi_deleted_tb = Column(Numeric(12, 4))
     discrepancy_pct = Column(Numeric(8, 2))
     total_cost = Column(Numeric(12, 2))
+    active_cost = Column(Numeric(12, 2))
+    deleted_cost = Column(Numeric(12, 2))
     low_disk_count = Column(Integer, default=0)
     high_discrepancy_count = Column(Integer, default=0)
     high_deleted_count = Column(Integer, default=0)
