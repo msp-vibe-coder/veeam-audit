@@ -28,6 +28,30 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  pipeline:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: pipeline
+    container_name: veeam-audit-pipeline
+    environment:
+      DATABASE_URL: postgresql://veeam:${DB_PASSWORD}@db:5432/veeam_audit
+      WASABI_ACCESS_KEY_ID: ${WASABI_ACCESS_KEY_ID}
+      WASABI_SECRET_ACCESS_KEY: ${WASABI_SECRET_ACCESS_KEY}
+      WASABI_ENDPOINT_URL: ${WASABI_ENDPOINT_URL}
+      WASABI_AUDIT_BUCKET: ${WASABI_AUDIT_BUCKET}
+      WASABI_AUDIT_PREFIX: ${WASABI_AUDIT_PREFIX}
+      WASABI_STATS_ACCESS_KEY: ${WASABI_STATS_ACCESS_KEY}
+      WASABI_STATS_SECRET_KEY: ${WASABI_STATS_SECRET_KEY}
+      TZ: America/Denver
+    volumes:
+      - pipeline-veeam:/app/input_veeam_audits
+      - pipeline-wasabi:/app/input_wasabi_utilization
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
   frontend:
     build:
       context: ../frontend
@@ -41,3 +65,5 @@ services:
 volumes:
   pgdata:
   reports:
+  pipeline-veeam:
+  pipeline-wasabi:

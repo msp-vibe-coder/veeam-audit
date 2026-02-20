@@ -96,6 +96,7 @@ The backend Dockerfile runs `alembic upgrade head` before starting uvicorn. The 
 - `veeam-audit` — frontend (nginx, port 80 internal, behind Traefik)
 - `veeam-audit-api` — backend (FastAPI/uvicorn)
 - `veeam-audit-db` — PostgreSQL 16 (port 5432 internal, not exposed to host)
+- `veeam-audit-pipeline` — pipeline cron job (runs daily at 7 AM Mountain Time)
 
 ### Database access
 PostgreSQL is only accessible inside the Docker network. Two ways to connect:
