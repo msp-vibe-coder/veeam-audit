@@ -4,7 +4,8 @@
 
 # Write all current env vars to a file that cron jobs can source
 # Values are single-quoted so special chars (#, \, !, etc.) are preserved
-printenv | sed "s/'/'\\\\''/g; s/=\(.*\)/='\1'/" > /app/.env.docker
+# Prefix with 'export' so child processes (python) inherit them
+printenv | sed "s/'/'\\\\''/g; s/=\(.*\)/='\1'/; s/^/export /" > /app/.env.docker
 
 # Write crontab: run pipeline daily at 7 AM (container TZ=America/Denver)
 echo "0 7 * * * . /app/.env.docker; cd /app && /usr/local/bin/python scripts/pipeline.py --verbose >> /proc/1/fd/1 2>&1" | crontab -
